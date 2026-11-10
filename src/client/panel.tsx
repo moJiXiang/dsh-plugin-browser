@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MousePointerClick } from 'lucide-react'
 import {
-  IconChevronLeftOutline14,
-  IconChevronRightOutline14,
-  IconRefreshOutline16,
+  IconChevronLeftOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconRefreshOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ElementPick } from './element-refs.ts'
 
@@ -232,19 +232,19 @@ export function BrowserPanel(props: BrowserPanelProps): React.ReactNode {
           type="button" className="dsh-browser-btn" title="后退"
           onClick={() => void postCommand({ type: 'back' })}
         >
-          <IconChevronLeftOutline14 size={14} />
+          <IconChevronLeftOutlineRegular size={14} />
         </button>
         <button
           type="button" className="dsh-browser-btn" title="前进"
           onClick={() => void postCommand({ type: 'forward' })}
         >
-          <IconChevronRightOutline14 size={14} />
+          <IconChevronRightOutlineRegular size={14} />
         </button>
         <button
           type="button" className="dsh-browser-btn" title="刷新"
           onClick={() => void postCommand({ type: 'reload' })}
         >
-          <IconRefreshOutline16 size={14} />
+          <IconRefreshOutlineRegular size={14} />
         </button>
         <input
           className="dsh-browser-url"

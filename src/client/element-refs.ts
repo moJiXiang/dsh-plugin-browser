@@ -195,7 +195,12 @@ export function insertElementRef(ctx: ClientContext, sessionId: string, pick: El
   // an idle empty draft means the previous round is over — numbering restarts.
   if (seq > 0 && state.draft === '' && state.phase === 'plain') resetElements()
   const { ref, label } = rememberElement(pick)
-  const chipExtra = state.occurrences.reduce((sum, occ) => sum + (occ.length - 1), 0)
+  // `InputState` is published untyped in 0.2.x (SnapshotStore resolves to any),
+  // so the chip occurrence shape is spelled out here instead of inferred.
+  const chipExtra = state.occurrences.reduce(
+    (sum: number, occ: { readonly length: number }) => sum + (occ.length - 1),
+    0,
+  )
   const at = Math.max(0, state.draft.length - chipExtra)
   const applied = input.insertReference(
     {

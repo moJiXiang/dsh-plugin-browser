@@ -1,12 +1,13 @@
-# dsh-plugin-browser dev overlay — load via:
-#   npx @deepseek-ai/dsh web --patch ./dsh-plugin-browser/cordis.patch.yml
-# The name must be an absolute path to the built host entry.
+# dsh-plugin-browser bundle layer: inserts the plugin row into the composition.
+# The bundle patch names the package (never an absolute path) so it works from
+# any installation directory. Dev overlay: point `name` at ./lib/index.js
+# instead, or load it with `dsh web --patch ./dsh-plugin-browser/cordis.patch.yml`.
 - insert:
-  - id: browser
-    name: /home/naxnax/deepseek-project/one-project/dsh-plugin-browser/lib/index.js
-    config:
-      headless: true
-      viewport:
-        width: 1280
-        height: 800
-      jpegQuality: 60
+    - id: browser
+      name: dsh-plugin-browser
+      config:
+        headless: true
+        viewport:
+          width: 1280
+          height: 800
+        jpegQuality: 60

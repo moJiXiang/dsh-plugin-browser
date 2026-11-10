@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { IconGlobeOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconGlobeOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { BrowserPanel } from './panel.tsx'
 import { ScreenshotToolView } from './tool-card.tsx'
 import { browserElementSource, insertElementRef, watchComposerClear } from './element-refs.ts'
@@ -64,7 +64,7 @@ function FooterButton(props: FooterActionProps): React.ReactNode {
         title="浏览器：打开内置浏览器面板"
         aria-label="浏览器"
       >
-        <IconGlobeOutline14 size={props.wide ? 16 : 18} />
+        <IconGlobeOutlineRegular size={props.wide ? 16 : 18} />
         {props.wide ? <span className="dsh-browser-footlabel">浏览器</span> : null}
       </button>
     </div>
@@ -82,6 +82,7 @@ export function apply(ctx: ClientContext): void {
     priority: 'extension',
     title: () => '浏览器',
     guide: [{
+      id: 'browser',
       order: 10,
       title: () => '浏览器',
       description: () => '打开内置浏览器，选择页面元素附加到输入框',

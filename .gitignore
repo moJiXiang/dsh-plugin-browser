@@ -2,3 +2,5 @@ node_modules/
 .chromium-deps/
 *.log
 .DS_Store
+dist/
+.dsh-code-index/

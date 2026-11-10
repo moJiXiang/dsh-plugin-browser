@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-browser",
   "description": "Built-in browser panel for the dsh web client: live screencast view, element picker attached to the composer, and Playwright-driven browser tools",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -19,12 +19,26 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "external": [
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.2-rc.1": "compatible"
+      }
     }
+  },
+  "engines": {
+    "node": ">=22"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "check:compat": "node scripts/check-compat.mjs",
+    "verify:install": "node scripts/verify-install.mjs",
+    "verify": "npm run typecheck && npm run check:compat && npm run build && npm run verify:install"
   },
   "repository": {
     "type": "git",
@@ -40,33 +54,38 @@
   "author": "TEGONG00",
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-agent": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-attachment": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-llm": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-session": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.1.5-rc.2",
     "@deepseek-ai/schemastery": "^3.18.2",
-    "playwright": "^1.63.0"
+    "playwright": "1.65.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-attachment": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "^0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.2.2-rc.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-api-session-controller": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-file-upload": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-store": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-input-trigger": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-sidebar": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-sidebar-right": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-client-ui-tool": "^0.1.5-rc.2",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-client-ui-tool": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
     "esbuild": "^0.25.0",
     "lucide-react": "^1.45.0",
     "react": "^18.2.0",
+    "semver": "^7.8.6",
     "typescript": "^5.6.0"
   }
 }

@@ -14,9 +14,23 @@
 
 ## 运行环境要求
 
-- dsh ≥ 0.1.5-rc.x，`dsh web`（web profile）
-- Node.js ≥ 20
-- Playwright Chromium：`npx playwright install chromium`（下载到 `~/.cache/ms-playwright`，无需 root）
+- dsh ≥ 0.2.2-rc.1（peer 基线；当前在最新版 0.2.2-rc.1 上验证）
+- Node.js ≥ 22
+- Playwright Chromium：`npx playwright install chromium`（下载到 `~/.cache/ms-playwright` / `%LOCALAPPDATA%\ms-playwright`，无需 root）
+
+> 本插件把 dsh 的宿主包（`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-attachment`、`@deepseek-ai/dsh-host-webserver`、`@deepseek-ai/cordis` 等）声明为 **peerDependencies**，只把 `playwright` 和 `@deepseek-ai/schemastery` 作为普通依赖。这样安装时不会把另一份 dsh 拎进 profile —— 那份旧副本会被 typert-loader 从 profile 里解析到，进而让整个 DSH 启动失败（见「故障排查」）。
+
+## 与最新 DSH 的兼容性
+
+宿主依赖全部走 `peerDependencies`（`^0.2.2-rc.1`），并用 `dsh.compatibility.dshReleases` 逐版本标注实测结论（当前 `0.2.2-rc.1: compatible`，供插件市场展示）。两条可重复的校验：
+
+```sh
+npm run check:compat    # 从 npm 读最新的 @deepseek-ai/dsh 版本，校验 peer 范围、市场元数据、以及有没有把宿主包写成 dependencies
+npm run verify:install  # 按 profile 的 pnpm 布局（hoisted + autoInstallPeers=false）真实打包安装一次，断言没有任何 @deepseek-ai/dsh* 副本被平铺
+npm run verify          # typecheck + 上面两项 + build，发布前跑一遍
+```
+
+DSH 发新版后，`check:compat` 会直接告诉你新版本是否仍落在 peer 范围内、以及是否需要在 `dsh.compatibility.dshReleases` 里补一条实测结论。
 
 <details>
 <summary>WSL2/精简系统缺少 libnspr4/libnss3？（免 sudo 方案）</summary>
@@ -58,6 +72,28 @@ npx @deepseek-ai/dsh web --patch ./dsh-plugin-browser/cordis.patch.yml --no-open
 ```
 
 打开终端输出的 `http://127.0.0.1:3080/?token=…`，侧栏底部点「浏览器」。
+
+## 故障排查
+
+**症状：装完这个插件后 DSH 起不来**，启动日志里是：
+
+```
+DesktopHostFatalError: dsh: startup failed: 2 required plugins did not activate
+Failed plugins (1): typert-loader
+  AggregateError: typert-loader: 1 typert contributor(s) failed to register:
+    - typert-loader: @deepseek-ai/dsh-llm invocation "@deepseek-ai/dsh-llm#llm/discoverModels"
+      parameter codec has no create() factory
+```
+
+**原因**：0.1.x 的 `package.json` 把 `@deepseek-ai/dsh-*` 宿主包写成了普通 `dependencies`（^0.1.5-rc.2）。profile 使用 pnpm 的 hoisted 布局且 `autoInstallPeers: false`，于是安装插件时把 **另一份 0.1.5-rc.x 的 `@deepseek-ai/dsh-llm` 等 30 多个 dsh 包**平铺到了 profile 根部。`typert-loader` 通过 `createRequire(profileDir)` 解析每个插件包的 TYPERT manifest，就解析到了这份旧副本；它的 manifest 与 0.2.x 的 loader 不兼容，校验直接抛错，启动随之中止。
+
+**修复（0.2.0 起）**：宿主包改列 `peerDependencies`（运行时由 dsh 提供），普通依赖只剩 `playwright` 与 `@deepseek-ai/schemastery`；`cordis.patch.yml` 的 bundle 条目也改用包名而不是写死的绝对路径。安装后 profile 里不再出现 `@deepseek-ai/dsh-*` 副本。
+
+如果已经卡在起不来的状态，先用 CLI 把插件摘掉再启动：
+
+```sh
+npx @deepseek-ai/dsh plugin --profile desktop remove dsh-plugin-browser
+```
 
 ## 配置
 
