@@ -1,10 +1,26 @@
-import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright'
+import type { Browser, BrowserContext, CDPSession, Page } from 'playwright'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { PICKER_SCRIPT } from './picker-script.ts'
 import type { Config } from './config.ts'
+
+/**
+ * Playwright is loaded on first use, never at module import: the plugin manager
+ * enables a bundle right after `pnpm add`, and importing playwright while pnpm
+ * is still relinking it throws — an error Node then caches for that module URL
+ * for the life of the host process, so the plugin can never activate again
+ * without a restart.
+ */
+const requireFromHere = createRequire(import.meta.url)
+let playwrightModule: typeof import('playwright') | undefined
+function playwright(): typeof import('playwright') {
+  playwrightModule ??= requireFromHere('playwright') as typeof import('playwright')
+  return playwrightModule
+}
 
 /**
  * Chromium needs libnspr4/libnss3, which may be absent on minimal WSL setups
@@ -62,6 +78,8 @@ export class BrowserController {
   private context?: BrowserContext
   private page?: Page
   private cdp?: CDPSession
+  /** Directory whose DevToolsActivePort file names the debugging port. */
+  private userDataDir?: string
   private pickEnabled = false
   private screencastActive = false
   private subscriberCount = 0
@@ -142,7 +160,7 @@ export class BrowserController {
   private async start(): Promise<void> {
     const viewport = { width: this.appliedViewport.width, height: this.appliedViewport.height }
     if (this.config.cdpEndpoint) {
-      this.browser = await chromium.connectOverCDP(this.config.cdpEndpoint)
+      this.browser = await playwright().chromium.connectOverCDP(this.config.cdpEndpoint)
       this.context = this.browser.contexts()[0] ?? await this.browser.newContext({ viewport })
       this.page = await this.context.newPage()
     } else {
@@ -151,20 +169,25 @@ export class BrowserController {
       const userDataDir = this.config.userDataDir
         ?? path.join(homedir(), '.cache', 'dsh-plugin-browser', 'profile')
       mkdirSync(userDataDir, { recursive: true })
+      this.userDataDir = userDataDir
+      // A loopback DevTools endpoint: the browser serves its own inspector UI,
+      // which is what the panel's 控制台 button redirects to. Port 0 lets the OS
+      // pick one; the chosen port is published in <userDataDir>/DevToolsActivePort.
+      const debugArgs = ['--remote-debugging-port=0']
       const base = {
         headless: this.config.headless ?? true,
         executablePath: this.config.executablePath,
         env: launchEnv(),
         viewport,
         deviceScaleFactor: 1,
-        args: this.gpuArgs(),
+        args: [...(this.gpuArgs() ?? []), ...debugArgs],
       }
       try {
-        this.context = await chromium.launchPersistentContext(userDataDir, base)
+        this.context = await playwright().chromium.launchPersistentContext(userDataDir, base)
       } catch (error) {
         // GPU flags can break launches on exotic setups — retry without them.
         this.logger.warn('[dsh-plugin-browser] launch with GPU flags failed; retrying without', error)
-        this.context = await chromium.launchPersistentContext(userDataDir, { ...base, args: undefined })
+        this.context = await playwright().chromium.launchPersistentContext(userDataDir, { ...base, args: debugArgs })
       }
       // launchPersistentContext opens with one page; the context owns the
       // browser lifecycle, so `browser` stays unset here.
@@ -551,5 +574,51 @@ export class BrowserController {
       fullPage: false,
     })
     return { base64: buffer.toString('base64'), width: this.appliedViewport.width, height: this.appliedViewport.height }
+  }
+
+  /**
+   * URL of Chromium's own DevTools frontend, pointed at the controlled page.
+   * The browser serves that UI on the loopback debugging port it publishes in
+   * DevToolsActivePort, so the panel only needs to redirect there — no extra
+   * app, and the frontend talks to the page over the same origin.
+   */
+  async devtoolsUrl(): Promise<string> {
+    const page = await this.ensure()
+    const { host, port } = await this.devtoolsEndpoint()
+    const base = `http://${host}:${port}`
+    const response = await fetch(`${base}/json/list`, { signal: AbortSignal.timeout(5_000) })
+    if (!response.ok) throw new Error(`调试端点返回 HTTP ${response.status}`)
+    const targets = await response.json() as Array<{ type?: string; url?: string; webSocketDebuggerUrl?: string }>
+    const current = page.url()
+    const target = targets.find((item) => item.type === 'page' && item.url === current)
+      ?? targets.find((item) => item.type === 'page')
+      ?? targets[0]
+    if (!target?.webSocketDebuggerUrl) throw new Error('没有可调试的页面目标')
+    const targetPath = new URL(target.webSocketDebuggerUrl).pathname
+    return `${base}/devtools/inspector.html?ws=${host}:${port}${targetPath}`
+  }
+
+  /** Loopback host:port of the debugging endpoint: the attach URL, or the launch port file. */
+  private async devtoolsEndpoint(): Promise<{ host: string; port: number }> {
+    if (this.config.cdpEndpoint) {
+      const url = new URL(this.config.cdpEndpoint)
+      const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80))
+      return { host: url.hostname || '127.0.0.1', port }
+    }
+    const file = this.userDataDir ? path.join(this.userDataDir, 'DevToolsActivePort') : undefined
+    if (!file) throw new Error('浏览器尚未启动')
+    let lastError: unknown
+    // The port file appears as the browser binds its endpoint; the first read
+    // can race a just-started launch.
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const port = (await readFile(file, 'utf8')).split('\n')[0]?.trim()
+        if (port && /^\d+$/.test(port)) return { host: '127.0.0.1', port: Number(port) }
+      } catch (error) {
+        lastError = error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    throw new Error(`读不到 Chromium 调试端口：${lastError instanceof Error ? lastError.message : String(lastError)}`)
   }
 }

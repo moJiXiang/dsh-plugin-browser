@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { MousePointerClick } from 'lucide-react'
+import { MousePointerClick, SquareTerminal } from 'lucide-react'
 import {
   IconChevronLeftOutlineRegular,
   IconChevronRightOutlineRegular,
@@ -22,7 +22,16 @@ export interface BrowserPanelInjected {
 
 interface BrowserPanelProps {
   useTabInfo: () => {
-    tab: { visible: boolean; active: unknown }
+    tab: {
+      visible: boolean
+      active: unknown
+      /** Set by the tab host on every open: a link click carries `{ url }`. */
+      navigation?: {
+        readonly address?: string
+        readonly params?: { readonly url?: string } | undefined
+        readonly revision?: number
+      } | undefined
+    }
   }
   insertElement: (pick: ElementPick) => string
   watchComposer: () => () => void
@@ -82,12 +91,64 @@ export function BrowserPanel(props: BrowserPanelProps): React.ReactNode {
   const [notice, setNotice] = useState('')
   const [urlFocused, setUrlFocused] = useState(false)
   const [urlDraft, setUrlDraft] = useState('')
+  const [consoleOpen, setConsoleOpen] = useState(false)
+  const [consoleUrl, setConsoleUrl] = useState('')
+  const [consoleError, setConsoleError] = useState('')
+
+  // Links clicked in chat or the tool cards open this tab with
+  // `params: { url }` — the sidebar-right contract dsh's chat uses for the
+  // `browser` kind — so every navigation revision with a url navigates here.
+  const handledRevision = useRef(-1)
+  useEffect(() => {
+    const navigation = tab.navigation
+    const revision = navigation?.revision ?? 0
+    if (revision === handledRevision.current) return
+    handledRevision.current = revision
+    const url = (navigation?.params as { url?: string } | undefined)?.url
+    if (!url) return
+    setUrlDraft(url)
+    void postCommand({ type: 'navigate', url })
+  }, [tab.navigation])
 
   const flashNotice = useCallback((text: string) => {
     setNotice(text)
     window.clearTimeout(noticeTimer.current)
     noticeTimer.current = window.setTimeout(() => setNotice(''), 4000)
   }, [])
+
+  /**
+   * DevTools is embedded in an iframe pointed at Chromium's own frontend, so the
+   * console opens inside the panel. The URL is resolved per open because it
+   * carries the debugging port and the current page target.
+   */
+  const openConsole = useCallback(async () => {
+    setConsoleOpen(true)
+    setConsoleError('')
+    try {
+      const response = await fetch('/dsh-browser/api/devtools')
+      const payload = await response.json() as { ok?: boolean; url?: string; error?: string }
+      if (payload.ok && payload.url) {
+        setConsoleUrl(payload.url)
+      } else {
+        setConsoleError(payload.error ?? '无法解析 DevTools 地址')
+      }
+    } catch (error) {
+      setConsoleError(error instanceof Error ? error.message : String(error))
+    }
+  }, [])
+
+  /** Fallback: the host opens the same URL in the OS browser (renderer denies window.open). */
+  const openConsoleExternally = useCallback(async () => {
+    try {
+      const response = await fetch('/dsh-browser/api/devtools?external=1')
+      const payload = await response.json() as { ok?: boolean; url?: string; error?: string }
+      flashNotice(payload.ok
+        ? '已在系统默认浏览器打开 DevTools'
+        : `打开失败：${payload.error ?? '未知错误'}${payload.url ? `（${payload.url}）` : ''}`)
+    } catch (error) {
+      flashNotice(`打开失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [flashNotice])
 
   const drawFrame = useCallback((base64: string) => {
     const canvas = canvasRef.current
@@ -267,6 +328,24 @@ export function BrowserPanel(props: BrowserPanelProps): React.ReactNode {
         <button
           type="button"
           className="dsh-browser-btn"
+          data-on={consoleOpen ? '1' : '0'}
+          title="在面板里打开控制台（DevTools）"
+          aria-label="控制台"
+          style={{ padding: '0 8px' }}
+          onClick={() => {
+            if (consoleOpen) {
+              setConsoleOpen(false)
+              return
+            }
+            void openConsole()
+          }}
+        >
+          <SquareTerminal size={14} />
+          <span>{consoleOpen ? '关闭控制台' : '控制台'}</span>
+        </button>
+        <button
+          type="button"
+          className="dsh-browser-btn"
           data-on={picking ? '1' : '0'}
           title="选择元素，以「元素N」引用插入输入框"
           style={{ padding: '0 8px' }}
@@ -281,6 +360,28 @@ export function BrowserPanel(props: BrowserPanelProps): React.ReactNode {
           {notice}
         </div>
       ) : null}
+      {consoleOpen ? (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: '#fff' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 6px', fontSize: 11, opacity: 0.8, flex: 'none' }}>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {consoleError ? `DevTools 打不开：${consoleError}` : 'DevTools · 指向当前页面'}
+            </span>
+            <button type="button" className="dsh-browser-btn" title="在系统浏览器中打开" style={{ padding: '0 6px' }} onClick={() => void openConsoleExternally()}>
+              新窗口
+            </button>
+            <button type="button" className="dsh-browser-btn" title="关闭控制台" style={{ padding: '0 6px' }} onClick={() => setConsoleOpen(false)}>
+              关闭
+            </button>
+          </div>
+          {consoleUrl && !consoleError ? (
+            <iframe
+              title="DevTools"
+              src={consoleUrl}
+              style={{ flex: 1, width: '100%', minHeight: 0, border: 'none', display: 'block' }}
+            />
+          ) : null}
+        </div>
+      ) : (
       <div
         ref={stageRef}
         style={{ flex: 1, minHeight: 0, display: 'flex', position: 'relative', background: 'color-mix(in srgb, currentColor 5%, transparent)' }}
@@ -309,6 +410,7 @@ export function BrowserPanel(props: BrowserPanelProps): React.ReactNode {
           }}
         />
       </div>
+      )}
       <div style={{ display: 'flex', gap: 8, padding: '3px 6px', opacity: 0.75, alignItems: 'center' }}>
         <span
           style={{

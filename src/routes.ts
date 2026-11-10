@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { BrowserController, ElementPick } from './browser.ts'
+import { openExternal } from './open-external.ts'
 
 const CMD_BODY_LIMIT = 1024 * 1024
 const SSE_HEARTBEAT_MS = 15_000
@@ -89,6 +90,46 @@ export function registerRoutes(ctx: Context, browser: BrowserController): void {
       // setSubscriberCount never throws (screencast failures downgrade to
       // "no frames" and retry on the next subscribe).
       await browser.setSubscriberCount(1)
+    },
+  })
+
+  // Console: resolve the DevTools URL for the controlled page. The panel
+  // embeds it in an <iframe>: Chromium serves that frontend with no
+  // X-Frame-Options, and dsh sets no CSP, so it renders inline. `?external=1`
+  // opens the same URL in the OS browser instead — the fallback for a blocked
+  // frame, and the only route the desktop renderer can reach (it denies
+  // window.open).
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/dsh-browser/api/devtools',
+    handler: async (req, res) => {
+      if (!sameOrigin(req) || req.method !== 'GET') {
+        json(res, 403, { ok: false, error: 'forbidden' })
+        return
+      }
+      let target: string
+      try {
+        target = await browser.devtoolsUrl()
+      } catch (error) {
+        json(res, 503, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        return
+      }
+      if ((req.headers.accept ?? '').includes('text/html')) {
+        res.writeHead(302, { location: target, 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
+      if (new URL(req.url ?? '/', 'http://dsh.local').searchParams.get('external') !== '1') {
+        json(res, 200, { ok: true, url: target })
+        return
+      }
+      try {
+        await openExternal(target)
+        json(res, 200, { ok: true, url: target, mode: 'external' })
+      } catch (error) {
+        // Still report the URL: the panel shows it so it can be opened by hand.
+        json(res, 200, { ok: false, url: target, error: error instanceof Error ? error.message : String(error) })
+      }
     },
   })
 

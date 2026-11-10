@@ -6,8 +6,11 @@
 
 ## 功能
 
-- **右侧栏浏览器 tab**：侧栏底部「🌐 浏览器」按钮打开（样式与「设置」行完全一致）；工具栏含后退 / 前进 / 刷新 / URL 栏 / 选择元素开关；画布实时显示页面（CDP screencast，JPEG），鼠标移动、点击、双击、滚轮、键盘都会转发给被控页面。
+- **右侧栏浏览器 tab**：侧栏底部「🌐 浏览器」按钮打开（样式与「设置」行完全一致）；工具栏含后退 / 前进 / 刷新 / URL 栏 / **控制台** / 选择元素开关；画布实时显示页面（CDP screencast，JPEG），鼠标移动、点击、双击、滚轮、键盘都会转发给被控页面。
+- **控制台（DevTools）**：工具栏「控制台」按钮把 Chromium 自带的 DevTools **内嵌在面板里**（iframe，指向当前被控页面），Elements / Console / Network / Sources 全部可用；再点一次收起。实现：浏览器加 `--remote-debugging-port=0`（仅回环），`GET /dsh-browser/api/devtools` 从 `DevToolsActivePort` 读出端口与页面 target 并返回该地址；Chromium 的 inspector 不带 `X-Frame-Options`、dsh 页面也没有 CSP，所以能直接内嵌。地址栏直接访问该路由会 302；面板里的「新窗口」按钮走 `?external=1`，由宿主调 `rundll32`/`open`/`xdg-open` 在系统浏览器打开（桌面渲染进程禁止 `window.open`，这是它的兜底）。
+- **对话里的链接直接在面板打开**：dsh 的聊天插件本身有「网页链接默认打开方式」设置（默认「应用内侧边栏」），只有注册了 `browser` 类型 tab 的插件才会出现这个选项。我们按 sidebar-right 的契约消费 `openTab('browser', { params: { url } })`：点击消息里的链接（含自动识别的裸 URL）会打开/切到浏览器面板、把 URL 填进地址栏并导航过去。若设置里选的是「默认浏览器」，那就仍走系统浏览器 —— 想用内置就在「设置 → 通用」里切回「应用内侧边栏」。
 - **选择元素 → 「元素N」引用 chip**：点击「选择元素」（lucide `MousePointerClick` 图标）后进入选择模式，点击页面元素会立刻以原生引用 chip 的形式把 **元素1、元素2……** 插入 dsh 输入框（与 `@文件` 引用同一机制：Lexical chip 节点，可删除、可撤销、跟随草稿持久化）。像引用文件一样在句子里自由组合：
+
   > 把元素1和元素2调换位置
   发送时每个 chip 自动展开为该元素的完整信息（选择器 / 标签 / 文本 / outerHTML / 所在页面 URL），模型据此精确定位要改的元素。元素登记表存于 sessionStorage，客户端刷新后已插入的 chip 仍可序列化。**输入框清空（发送完成或手动清空）后计数自动归零**，下一轮从 元素1 重新开始。
 - **模型工具**（`browser_navigate` / `browser_screenshot` / `browser_snapshot` / `browser_click` / `browser_type`）：模型可以打开页面、看截图（返回持久化 image 附件，多模态可见）、拿交互元素大纲（`[12] <button> "Submit"` 风格索引）、按索引点击和输入——「改代码 → 自己打开页面 → 截图验收」闭环。`browser_screenshot` 的结果在聊天里渲染为图片卡片。
